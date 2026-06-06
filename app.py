@@ -10,7 +10,7 @@ from collections import defaultdict
 import re
 
 # -----------------------------------------------------------------------------
-# إعدادات الواجهة (CSS & RTL)
+# إعدادات الواجهة الرسومية والتنسيق (CSS & RTL)
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="نظام فرز وترتيب العوائل الذكي", layout="wide", page_icon="👨‍👩‍👧‍👦")
 st.markdown("""
@@ -24,11 +24,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: right;'>نظام الفرز الهرمي والكتل المتتابعة 👨‍👩‍👧‍👦📄</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>تحديث: دمج الإخوة ككتلة واحدة ممتدة (مثل حالة خالد وإخوته) لضمان عدم انفصال أفراد العائلة الواحدة مهما اختلفت أحرفهم.</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: right;'>نظام الفرز الهرمي وحماية الألقاب 👨‍👩‍👧‍👦📄</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>تم التحديث: عزل كامل للعوائل المتشابهة بالأسماء الثلاثية بناءً على اللقب والاسم الرابع، مع دمج الحالات الخاصة (مثل خالد) فقط في حال تطابقها غير اللامشروط مع إخوتها.</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# دوال المساعدة للوورد (Word Helpers)
+# دوال المساعدة لملفات الوورد (Word Helpers)
 # -----------------------------------------------------------------------------
 def set_cell_direction(cell, direction='btLr'):
     tc = cell._tc
@@ -41,7 +41,7 @@ def set_cell_width(cell, width_cm):
     tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
     tcW = OxmlElement('w:tcW')
-    tcW.set(qn('w:w'), str(int(width_cm * 567))) # 1 cm ~ 567 twips
+    tcW.set(qn('w:w'), str(int(width_cm * 567))) 
     tcW.set(qn('w:type'), 'dxa')
     tcPr.append(tcW)
 
@@ -51,11 +51,12 @@ def apply_rtl(doc):
             style.font.rtl = True
 
 def preprocess_name(name):
-    """ربط الأسماء المركبة لضمان دقة استخراج اسم الأب والجد الكلي"""
+    """ربط الأسماء المركبة لضمان دقة فصل واستخراج الألقاب وسلسلة الآباء"""
     name = name.strip()
     name = re.sub(r'\s+', ' ', name)
     name = name.replace('عبد ', 'عبد_')
     name = name.replace('ابو ', 'ابو_')
+    name = name.replace('أبو ', 'أبو_')
     name = name.replace('أم ', 'أم_')
     name = name.replace('ام ', 'ام_')
     name = name.replace('امة ', 'امة_')
@@ -63,13 +64,13 @@ def preprocess_name(name):
     return name
 
 # -----------------------------------------------------------------------------
-# محرك استخراج البيانات والفرز بالكتل المتتابعة
+# محرك استخراج البيانات والفرز المتقدم لحماية الألقاب
 # -----------------------------------------------------------------------------
 def process_family_data(file_obj):
     doc_in = Document(file_obj)
     records = []
     
-    # 1. قراءة البيانات من الجداول
+    # 1. استخراج البيانات من الجداول
     for table in doc_in.tables:
         for row in table.rows:
             cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
@@ -112,7 +113,7 @@ def process_family_data(file_obj):
                 'name': cells[name_idx], 'old_card': old_card, 'card': card_num, 'seq': seq
             })
 
-    # 2. قراءة البيانات من النصوص (إذا لم تكن جداول)
+    # 2. استخراج البيانات من النصوص الحرة (في حال عدم وجود جداول)
     if not records:
         lines = [para.text.strip() for para in doc_in.paragraphs if para.text.strip()]
         for line in lines:
@@ -127,10 +128,10 @@ def process_family_data(file_obj):
         return [], None
 
     # ---------------------------------------------------------
-    # الخوارزمية الذكية المحدثة: الكتل المتتابعة بسلسلة الأب
+    # خوارزمية الفرز المحدثة: حماية الألقاب ومنع التداخل العشوائي
     # ---------------------------------------------------------
     
-    # أ- استخراج سلسلة الأب لكل قيد
+    # أ- بناء سلسلة الآباء لكل قيد (الاسم كاملاً بدون الكلمة الأولى)
     for rec in records:
         proc_name = preprocess_name(rec['name'])
         words = proc_name.split()
@@ -139,41 +140,45 @@ def process_family_data(file_obj):
         else:
             rec['father_string'] = proc_name
 
-    # ب- الربط الذكي بالامتداد (Prefix Matching) لتجميع الإخوة المتفاوتين في عدد الكلمات
     unique_fathers = list(set(r['father_string'] for r in records))
-    unique_fathers_by_len = sorted(unique_fathers, key=len)
     
+    # ب- خوارزمية التقييم والربط الآمن لحماية الألقاب (Ambiguity Guard)
     family_map = {}
-    roots = []
-    
-    for f in unique_fathers_by_len:
-        found = False
-        for r in roots:
-            # إذا كانت السلسلة الحالية تبدأ بالجذر (مثال: عبد_الأمير علي يبدأ بـ عبد_الأمير)
-            if f.startswith(r + " ") or f == r:
-                # صمام أمان لمنع دمج عوائل الآباء الأحادية الشائعة مثل (محمد) أو (علي) بالخطأ
-                if f == r or " " in r or "_" in r:
-                    family_map[f] = r
-                    found = True
-                    break
-        if not found:
-            roots.append(f)
+    for f in unique_fathers:
+        # البحث عن عوائل كاملة تبدأ بنفس السلسلة وتختلف عنها (امتداد لها باللقب)
+        matches = [other for other in unique_fathers if other.startswith(f + " ") and other != f]
+        
+        # لا ندمج إلا إذا كان الاسم المختصر ينتمي لعائلة واحدة فريدة ومحددة في الملف (مثل حالة خالد)
+        if len(matches) == 1:
+            family_map[f] = matches[0]
+        else:
+            # إذا لم يوجد امتداد، أو وُجد أكثر من امتداد بلقبين مختلفين (مثال: الخفاجي والجبوري)، نمنع الدمج تماماً لحماية اللقب
             family_map[f] = f
+            
+    # ج- حل السلاسل التتابعية للوصول للجذر النهائي الموحد
+    final_family_map = {}
+    for f in unique_fathers:
+        current = f
+        for _ in range(5):
+            target = family_map.get(current, current)
+            if target == current:
+                break
+            current = target
+        final_family_map[f] = current
 
-    # ج- توزيع الأفراد على الجذور الموحدة النهائية لضمان التتابع المطلق للعائلة
+    # د- توزيع القيود على مجموعات العوائل النهائية الآمنة والمفصولة بالألقاب
     final_family_groups = defaultdict(list)
     for rec in records:
-        assigned_root = family_map[rec['father_string']]
+        assigned_root = final_family_map[rec['father_string']]
         final_family_groups[assigned_root].append(rec)
 
-    # د- بناء كتل العوائل وترتيب أفرادها داخلياً أبجدياً
+    # هـ- ترتيب أفراد كل عائلة داخلياً أبجدياً وتحديد الحرف العام للقائد
     family_list = []
     for root, members in final_family_groups.items():
         members_sorted = sorted(members, key=lambda m: m['name'])
         leading_name = members_sorted[0]['name'].strip()
         first_char = leading_name[0] if leading_name else "أ"
         
-        # توحيد الحروف الالفية
         if first_char in ['أ', 'إ', 'آ', 'ا']:
             letter_key = 'أ'
         else:
@@ -187,7 +192,7 @@ def process_family_data(file_obj):
             'letter_key': letter_key
         })
 
-    # هـ- التجميع النهائي حسب الترتيب المطلق المطلوب (أبجدي الحرف -> حجم العائلة تنازلياً -> العائلة أبجدياً)
+    # و- التجميع النهائي حسب القواعد (الحرف الأبجدي أولاً -> حجم العائلة تنازلياً -> العوائل المتساوية أبجدياً)
     letter_groups = defaultdict(list)
     for fam in family_list:
         letter_groups[fam['letter_key']].append(fam)
@@ -197,11 +202,11 @@ def process_family_data(file_obj):
     
     for letter in sorted_letters:
         fams_in_letter = letter_groups[letter]
-        # ترتيب العوائل داخل نفس الحرف بناءً على الحجم ثم أبجدية الاسم القائد
+        # فرز العوائل داخل الحرف: الأكبر حجماً أولاً، وعند التساوي يتم الاعتماد على أبجدية الاسم القائد
         fams_sorted = sorted(fams_in_letter, key=lambda x: (-x['size'], x['leading_name']))
         
         for fam in fams_sorted:
-            # هنا يتم صب العائلة بالكامل ككتلة واحدة ممتالية لا يقطعها أي اسم عائلة أخرى
+            # صب أفراد العائلة الواحدة ككتلة متكاملة ومستمرة تماماً دون أي انقطاع
             sorted_records.extend(fam['members'])
         
     stats = {
@@ -213,7 +218,7 @@ def process_family_data(file_obj):
     return sorted_records, stats
 
 # -----------------------------------------------------------------------------
-# محرك إنشاء ملف Word النهائي
+# محرك بناء تقرير ملف Word النهائي
 # -----------------------------------------------------------------------------
 def create_sorted_word_report(sorted_records):
     doc_out = Document()
@@ -264,65 +269,64 @@ def create_sorted_word_report(sorted_records):
     return buffer
 
 # -----------------------------------------------------------------------------
-# واجهة الاستخدام والتفاعل
+# واجهة الاستخدام Streamlit
 # -----------------------------------------------------------------------------
-st.markdown("<h3 style='text-align: right;'>📂 رفع ملف البيانات</h3>", unsafe_allow_html=True)
-uploaded_file = st.file_uploader("قم برفع ملف الوورد (المراد ترتيبه)", type=['docx'], label_visibility="collapsed")
+st.markdown("<h3 style='text-align: right;'>📂 رفع ملف البيانات الأصلي</h3>", unsafe_allow_html=True)
+uploaded_file = st.file_uploader("قم برفع ملف الوورد المراد فرزه وترتيبه", type=['docx'], label_visibility="collapsed")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-if st.button("⚙️ بدء الفرز الهرمي بالكتل المتتابعة"):
+if st.button("⚙️ بدء المعالجة والفرز الآمن بحماية الألقاب"):
     if uploaded_file:
-        with st.spinner('جاري تطبيق خوارزمية الربط بالامتداد الذكي وتجميع الكتل...'):
+        with st.spinner('جاري حماية الألقاب وفصل العوائل المتشابهة ثلاثياً وتجميع الكتل...'):
             try:
                 sorted_records, stats = process_family_data(uploaded_file)
                 
                 if not sorted_records:
-                    st.error("❌ لم يتم العثور على جداول أو بيانات صحيحة في هذا الملف!")
+                    st.error("❌ لم يتم العثور على بيانات أو جداول صالحة للمعالجة في هذا الملف!")
                 else:
-                    st.markdown("<h3 style='text-align: right; margin-top: 20px;'>📊 إحصائية الفرز</h3>", unsafe_allow_html=True)
+                    st.markdown("<h3 style='text-align: right; margin-top: 20px;'>📊 إحصائيات دقة الفرز</h3>", unsafe_allow_html=True)
                     c1, c2, c3 = st.columns(3)
                     with c1: 
                         st.markdown(f"""<div class='report-box'>
-                            <div class='stat-title'>إجمالي القيود (الأفراد)</div>
-                            <div class='stat-value'>{stats['total_records']} قيد</div>
+                            <div class='stat-title'>إجمالي الأفراد المعالجين</div>
+                            <div class='stat-value'>{stats['total_records']} فرد</div>
                         </div>""", unsafe_allow_html=True)
                     with c2: 
                         st.markdown(f"""<div class='report-box'>
-                            <div class='stat-title'>إجمالي العوائل المستقلة</div>
+                            <div class='stat-title'>إجمالي العوائل المستقلة (المفصولة باللقب)</div>
                             <div class='stat-value'>{stats['families']} عائلة</div>
                         </div>""", unsafe_allow_html=True)
                     with c3: 
                         st.markdown(f"""<div class='report-box'>
-                            <div class='stat-title'>أكبر عائلة متتابعة مجمعة</div>
+                            <div class='stat-title'>أكبر كتلة عائلية متتابعة</div>
                             <div class='stat-value'>{stats['max_family_size']} أفراد</div>
                         </div>""", unsafe_allow_html=True)
                     
-                    st.markdown("<h3 style='text-align: right; color: #2C3E50;'>📋 معاينة سريعة للكتل المتتابعة</h3>", unsafe_allow_html=True)
+                    st.markdown("<h3 style='text-align: right; color: #2C3E50;'>📋 معاينة مباشرة للجداول الناتجة</h3>", unsafe_allow_html=True)
                     df_preview = pd.DataFrame(sorted_records)
                     df_preview = df_preview.rename(columns={
                         'name': 'اسم رب الاسرة', 'card': 'رقم البطاقة', 
                         'total': 'الكلية', 'eligible': 'المستحقة', 'withheld': 'المحجوبين'
                     })[['اسم رب الاسرة', 'رقم البطاقة', 'الكلية', 'المستحقة', 'المحجوبين']]
                     
-                    # تم زيادة المعاينة هنا للتأكد تماماً من تتابع الكتل
                     st.dataframe(df_preview.head(50), use_container_width=True, hide_index=True)
-                    st.caption("يعرض أول 50 قيد للمعاينة (تأكد من تتابع الأسماء مثل حالة خالد وإخوته ككتلة واحدة ممتالية).")
+                    st.caption("توضح المعاينة أعلاه ثبات كل عائلة ككتلة صلبة، مع بقاء عوائل الألقاب المختلفة منفصلة تماماً حتى وإن تطابقت أسماؤها الثلاثية.")
                     
                     word_buffer = create_sorted_word_report(sorted_records)
                     original_name = uploaded_file.name.rsplit('.', 1)[0]
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.download_button(
-                        label="📥 تحميل ملف الوورد النهائي المنسق بالكتل المتتابعة",
+                        label="📥 تحميل ملف الوورد النهائي المنسق والمحمي",
                         data=word_buffer,
-                        file_name=f"مرتب_بالكتل_{original_name}.docx",
+                        file_name=f"فرز_آمن_{original_name}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         use_container_width=True
                     )
-                    st.success("🎉 اكتملت عملية الفرز والتجميع بالكتل المتتابعة بنجاح! الملف جاهز الآن.")
+                    st.success("🎉 اكتملت عملية الفرز وتأمين الألقاب والكتل المتتابعة بنجاح تام! الملف جاهز للتحميل والطباعة فوراً.")
                 
             except Exception as e:
-                st.error(f"❌ حدث خطأ غير متوقع: {e}")
+                st.error(f"❌ حدث خطأ غير متوقع أثناء الفرز: {e}")
     else:
-        st.warning("⚠️ يرجى رفع الملف أولاً قبل بدء الفرز.")
+        st.warning("⚠️ يرجى رفع ملف الوورد أولاً لبدء العمل.")
