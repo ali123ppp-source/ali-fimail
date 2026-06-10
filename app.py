@@ -10,31 +10,29 @@ from collections import defaultdict
 import re
 
 # -----------------------------------------------------------------------------
-# إعدادات الواجهة الرسومية والتنسيق (CSS)
+# إعدادات الواجهة الرسومية والتنسيق الفاخر
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="نظام فرز المناطق المتقدم - 7 مناطق", layout="wide", page_icon="🏢")
+st.set_page_config(page_title="نظام فرز وتوزيع العوائل الذكي", layout="wide", page_icon="⚡")
 st.markdown("""
     <style>
     th, td { text-align: right !important; dir: rtl !important; }
-    div.stButton > button { background-color: #2C3E50; color: white; width: 100%; font-weight: bold; border-radius: 8px; padding: 10px;}
-    div.stButton > button:hover { background-color: #1A252F; color: #F1C40F;}
-    .report-box { background-color: #ECF0F1; padding: 12px; border-radius: 8px; border-right: 5px solid #2C3E50; text-align: right; margin-bottom: 10px;}
+    div.stButton > button { background-color: #2E7D32; color: white; width: 100%; font-weight: bold; border-radius: 8px; padding: 12px; font-size: 16px;}
+    div.stButton > button:hover { background-color: #1B5E20; color: #F1C40F;}
+    .report-box { background-color: #F8F9FA; padding: 12px; border-radius: 8px; border-right: 5px solid #2E7D32; text-align: right; margin-bottom: 10px; box-shadow: 1px 1px 5px rgba(0,0,0,0.05);}
     .stat-title { font-size: 13px; color: #7F8C8D; font-weight: bold; }
-    .stat-value { font-size: 18px; color: #2C3E50; font-weight: bold; margin-top: 3px;}
+    .stat-value { font-size: 16px; color: #2C3E50; font-weight: bold; margin-top: 3px;}
+    /* تحسين اتجاه جداول Streamlit للعربية */
+    div[data-testid="stDataEditor"] { direction: rtl !important; }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: right;'>توزيع الفرز الذكي - نظام الـ 7 مناطق ⚡🏢</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>تمت ترقية النظام ليدعم 7 مناطق توزيع مستقلة مع الحفاظ على ترتيب تقديم الآباء وعزل النساء في نهاية الجداول.</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: right;'>اللوحة الذكية لفرز وتوزيع العوائل (7 مناطق) 🗺️⚡</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>قم بتوزيع العوائل ككتل كاملة بسرعة فائقة من خلال الجدول التفاعلي أدناه، مع ميزة التقديم التلقائي للآباء وعزل النساء.</p>", unsafe_allow_html=True)
 
-# تعريف المناطق السبعة بشكل ثابت للرجوع إليها برمجياً
-LIST_OF_ZONES = [
-    "المنطقة الأولى", "المنطقة الثانية", "المنطقة الثالثة", 
-    "المنطقة الرابعة", "المنطقة الخامسة", "المنطقة السادسة", "المنطقة السابعة"
-]
+LIST_OF_ZONES = ["المنطقة الأولى", "المنطقة الثانية", "المنطقة الثالثة", "المنطقة الرابعة", "المنطقة الخامسة", "المنطقة السادسة", "المنطقة السابعة"]
 
 # -----------------------------------------------------------------------------
-# دوال الوورد والتنسيق المستندي
+# دوال معالجة مستندات Word والأسماء
 # -----------------------------------------------------------------------------
 def set_cell_direction(cell, direction='btLr'):
     tc = cell._tc
@@ -62,13 +60,10 @@ def preprocess_name(name):
     return name
 
 def is_female(name):
-    """دالة فحص وتحديد أسماء النساء لعزلهن في نهاية الملف"""
     first_word = name.strip().split()[0]
     if first_word in ['ام', 'أم', 'امة', 'أمة', 'آمال']: return True
-    
     male_exceptions = ['حمزة', 'اسامة', 'أسامة', 'حذيفة', 'قتادة', 'طلحة', 'خليفة', 'معاوية', 'عطية', 'حارثة', 'عروة', 'عبيدة', 'ميسرة', 'سلامة']
     if first_word.endswith('ة') and first_word not in male_exceptions: return True
-        
     female_names = [
         'زينب', 'مريم', 'شهد', 'نور', 'هدى', 'ندى', 'ليلى', 'سها', 'مها', 'ريم', 'سعاد', 'هند',
         'ايمان', 'إيمان', 'رحاب', 'سحر', 'سمر', 'كوثر', 'غدير', 'حنان', 'منى', 'اسماء', 'أسماء',
@@ -88,7 +83,7 @@ def is_female(name):
     return False
 
 # -----------------------------------------------------------------------------
-# معالجة وهيكلة البيانات العائلية للجذور
+# دالة سحب وتجميع البيانات العائلية الهرمية
 # -----------------------------------------------------------------------------
 def extract_and_group_data(file_obj):
     doc_in = Document(file_obj)
@@ -121,7 +116,7 @@ def extract_and_group_data(file_obj):
                 'name': cells[name_idx].strip(), 'old_card': old_card, 'card': card_num, 'seq': seq
             })
 
-    if not records: return None, None
+    if not records: return None
 
     male_records = []
     female_records = []
@@ -186,18 +181,15 @@ def extract_and_group_data(file_obj):
         rec['root_id'] = fam_id
         families_list.append({
             'root_id': fam_id,
-            'father_display': rec['name'] + ' (نساء)',
+            'father_display': rec['name'] + ' (بيانات نساء)',
             'leading_name': rec['name'],
             'size': 1,
             'members': [rec],
             'is_female_group': True
         })
         
-    return families_list, records
+    return families_list
 
-# -----------------------------------------------------------------------------
-# محرك بناء ملفات Word وتصديرها التلقائي
-# -----------------------------------------------------------------------------
 def create_word_file(sorted_records):
     doc_out = Document()
     apply_rtl(doc_out)
@@ -236,59 +228,79 @@ def create_word_file(sorted_records):
     return buffer
 
 # -----------------------------------------------------------------------------
-# الواجهة التفاعلية وإدارة الـ 7 مناطق
+# سير العمل والواجهة التفاعلية الفائقة
 # -----------------------------------------------------------------------------
-st.markdown("<h3 style='text-align: right;'>📂 خطوة 1: رفع ملف البيانات الأصلي</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: right;'>📂 خطوة 1: ارفع ملف الوورد الأساسي</h3>", unsafe_allow_html=True)
 uploaded_file = st.file_uploader("", type=['docx'], label_visibility="collapsed")
 
 if uploaded_file:
-    if 'current_file' not in st.session_state or st.session_state.current_file != uploaded_file.name:
-        families, all_records = extract_and_group_data(uploaded_file)
+    # تهيئة البيانات وبنائها عند الرفع لأول مرة
+    if 'file_key' not in st.session_state or st.session_state.file_key != uploaded_file.name:
+        families = extract_and_group_data(uploaded_file)
         if families:
             st.session_state.families = families
-            st.session_state.all_records = all_records
-            st.session_state.current_file = uploaded_file.name
-            # تعيين المنطقة الأولى كخيار افتراضي لكافة العوائل
-            st.session_state.family_zones = {fam['root_id']: LIST_OF_ZONES[0] for fam in families}
-            st.session_state.all_names_list = sorted([r['name'] for r in all_records])
+            st.session_state.file_key = uploaded_file.name
+            
+            # بناء جدول تعديل البيانات الذكي
+            rows_list = []
+            for fam in families:
+                rows_list.append({
+                    'id': fam['root_id'],
+                    'اسم العائلة / الأب المرجعي': fam['father_display'],
+                    'عدد الأفراد': fam['size'],
+                    'معاينة أفراد العائلة والأبناء داخل الكتلة': ", ".join([m['name'] for m in fam['members']]),
+                    'تحديد المنطقة': LIST_OF_ZONES[0] # الافتراضية
+                })
+            st.session_state.df_editable = pd.DataFrame(rows_list)
 
-    if 'families' in st.session_state:
+    if 'df_editable' in st.session_state:
         st.markdown("<br><hr>", unsafe_allow_html=True)
-        st.markdown("<h3 style='text-align: right;'>⚡ خطوة 2: لوحة الفرز والتعيين السريع للـ 7 مناطق</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: right;'>🛠️ خطوة 2: جدول التوزيع الفوري (تعديل مباشر وسريع جداً)</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: right; color:#7F8C8D;'>💡 نصيحة: استخدم خانة البحث في أعلى يمين الجدول لتصفية عائلة معينة باللقب أو الاسم وتغيير منطقتها فوراً.</p>", unsafe_allow_html=True)
+
+        # عرض الجدول التفاعلي الاحترافي
+        edited_df = st.data_editor(
+            st.session_state.df_editable,
+            column_config={
+                "id": None, # إخفاء المعرف الرقمي للخلفية
+                "اسم العائلة / الأب المرجعي": st.column_config.TextColumn("👨‍👦 اسم العائلة المرجعي", disabled=True, width="medium"),
+                "عدد الأفراد": st.column_config.NumberColumn("🔢 العدد", disabled=True, width="small"),
+                "معاينة أفراد العائلة والأبناء داخل الكتلة": st.column_config.TextColumn("👥 الأفراد المدموجين تلقائياً", disabled=True, width="large"),
+                "تحديد المنطقة": st.column_config.SelectboxColumn(
+                    "🏢 اختر المنطقة السكنية",
+                    options=LIST_OF_ZONES,
+                    required=True,
+                    width="medium"
+                )
+            },
+            hide_index=True,
+            use_container_width=True
+        )
         
-        col_name, col_zone, col_action = st.columns([4, 3, 3])
-        
-        with col_name:
-            selected_person = st.selectbox("🔎 اختر أو اكتب اسم شخص أو أب للتخطي:", options=st.session_state.all_names_list)
-            
-        with col_zone:
-            chosen_zone = st.selectbox("🏢 اختر واحدة من المناطق السبعة لتوجيه العائلة إليها:", options=LIST_OF_ZONES)
-            
-        with col_action:
-            st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🚀 سحب وتعيين كل الإخوة والآباء"):
-                matched_record = next((r for r in st.session_state.all_records if r['name'] == selected_person), None)
-                if matched_record:
-                    target_root = matched_record['root_id']
-                    st.session_state.family_zones[target_root] = chosen_zone
-                    bros_count = len([r for r in st.session_state.all_records if r['root_id'] == target_root])
-                    st.success(f"✅ تم سحب العائلة بالاعتماد على الاسم المرجعي.. ونقل **{bros_count}** أفراد بنجاح إلى ({chosen_zone}).")
+        # حفظ التعديلات بداخل الـ session لحين معالجتها
+        st.session_state.df_editable = edited_df
 
         # ---------------------------------------------------------------------
-        # توليد الملفات النهائية للـ 7 مناطق
+        # توليد المستندات النهائية للمناطق السبعة بناءً على جدول التعديل المباشر
         # ---------------------------------------------------------------------
         st.markdown("<br><hr>", unsafe_allow_html=True)
-        if st.button("⚙️ إنتاج وحفظ ملفات الوورد النهائية لكافة المناطق السبعة"):
+        if st.button("⚙️ معالجة نهائية وإنتاج مستندات الـ 7 مناطق"):
+            
+            # خلق خريطة سريعة لربط المعرف بالمنطقة المختارة من قبل المستخدم
+            zone_mapping = dict(zip(edited_df['id'], edited_df['تحديد المنطقة']))
             
             zone_fams = {zone: [] for zone in LIST_OF_ZONES}
             for fam in st.session_state.families:
-                zone_fams[st.session_state.family_zones[fam['root_id']]].append(fam)
+                assigned_zone = zone_mapping.get(fam['root_id'], LIST_OF_ZONES[0])
+                zone_fams[assigned_zone].append(fam)
             
             def finalize_zone(families_in_zone):
                 males = [f for f in families_in_zone if not f['is_female_group']]
                 females = [f for f in families_in_zone if f['is_female_group']]
                 
+                # ترتيب هرمي للرجال: أبجدياً، ثم الأب في البداية تلقائياً
                 sorted_males = sorted(males, key=lambda x: (x['leading_name'][0] if x['leading_name'] else 'أ', -x['size'], x['leading_name']))
+                # ترتيب النساء أبجدياً وعزلهن كاملاً في أسفل القائمة
                 sorted_females = sorted(females, key=lambda x: x['leading_name'])
 
                 final_list = []
@@ -296,7 +308,6 @@ if uploaded_file:
                 for f in sorted_females: final_list.extend(f['members'])
                 return final_list
 
-            # بناء مصفوفة البيانات النهائية لكل منطقة
             final_buffers = {}
             final_counts = {}
             for zone in LIST_OF_ZONES:
@@ -304,32 +315,28 @@ if uploaded_file:
                 final_counts[zone] = len(zone_records)
                 final_buffers[zone] = create_word_file(zone_records) if zone_records else None
 
-            st.markdown("<h3 style='text-align: right;'>📥 خطوة 3: تحميل ملفات المناطق المفروزة</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='text-align: right;'>📥 خطوة 3: روابط تحميل ملفات المناطق الجاهزة للطباعة</h3>", unsafe_allow_html=True)
             
-            # عرض المناطق الأربعة الأولى في الصف الأول
-            st.markdown("<h4 style='text-align: right; color:#34495E;'>📍 الصف الأول (المناطق 1 - 4):</h4>", unsafe_allow_html=True)
-            r1_cols = st.columns(4)
+            st.markdown("<h4 style='text-align: right; color:#1B5E20;'>📍 الجزء الأول:</h4>", unsafe_allow_html=True)
+            col_r1 = st.columns(4)
             for i in range(4):
-                zone_name = LIST_OF_ZONES[i]
-                with r1_cols[i]:
-                    st.markdown(f"<div class='report-box'><div class='stat-title'>{zone_name}</div><div class='stat-value'>{final_counts[zone_name]} فرد جاهز</div></div>", unsafe_allow_html=True)
-                    if final_buffers[zone_name]:
-                        st.download_button(f"📥 تحميل {zone_name}", data=final_buffers[zone_name], file_name=f"{zone_name.replace(' ', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-                    else: st.warning("المنطقة فارغة حالياً")
+                z_name = LIST_OF_ZONES[i]
+                with col_r1[i]:
+                    st.markdown(f"<div class='report-box'><div class='stat-title'>{z_name}</div><div class='stat-value'>{final_counts[z_name]} قيد عائلي</div></div>", unsafe_allow_html=True)
+                    if final_buffers[z_name]:
+                        st.download_button(f"📥 مستند {z_name}", data=final_buffers[z_name], file_name=f"{z_name.replace(' ', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+                    else: st.caption("فارغة")
 
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            # عرض المناطق الثلاثة المتبقية في الصف الثاني
-            st.markdown("<h4 style='text-align: right; color:#34495E;'>📍 الصف الثاني (المناطق 5 - 7):</h4>", unsafe_allow_html=True)
-            r2_cols = st.columns(3)
+            st.markdown("<br><h4 style='text-align: right; color:#1B5E20;'>📍 الجزء الثاني:</h4>", unsafe_allow_html=True)
+            col_r2 = st.columns(3)
             for i in range(3):
-                zone_name = LIST_OF_ZONES[4 + i]
-                with r2_cols[i]:
-                    st.markdown(f"<div class='report-box'><div class='stat-title'>{zone_name}</div><div class='stat-value'>{final_counts[zone_name]} فرد جاهز</div></div>", unsafe_allow_html=True)
-                    if final_buffers[zone_name]:
-                        st.download_button(f"📥 تحميل {zone_name}", data=final_buffers[zone_name], file_name=f"{zone_name.replace(' ', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-                    else: st.warning("المنطقة فارغة حالياً")
+                z_name = LIST_OF_ZONES[4 + i]
+                with col_r2[i]:
+                    st.markdown(f"<div class='report-box'><div class='stat-title'>{z_name}</div><div class='stat-value'>{final_counts[z_name]} قيد عائلي</div></div>", unsafe_allow_html=True)
+                    if final_buffers[z_name]:
+                        st.download_button(f"📥 مستند {z_name}", data=final_buffers[z_name], file_name=f"{z_name.replace(' ', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+                    else: st.caption("فارغة")
                     
-            st.success("🎉 اكتمل الفرز والحفظ لـ 7 مناطق بنجاح تام! الملفات جاهزة للتحميل والمطابقة الميدانية.")
+            st.success("🎉 تمت عملية تصفية الفرز والدمج بنجاح مذهل! العوائل والنساء تم تنظيمهن بدقة حاسوبية كاملة.")
 else:
-    st.info("👋 يرجى رفع ملف الوورد أولاً لتفعيل لوحة التحكم والتوزيع السريع للـ 7 مناطق.")
+    st.info("👋 مرحباً بك! يرجى رفع ملف الـ Word الأصلي للبدء بالفرز السريع وفصل المناطق السبعة فوراً.")
