@@ -10,23 +10,31 @@ from collections import defaultdict
 import re
 
 # -----------------------------------------------------------------------------
-# إعدادات الواجهة الرسومية
+# إعدادات الواجهة الرسومية والتنسيق (CSS)
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="نظام فرز المناطق المتقدم", layout="wide", page_icon="🏢")
+st.set_page_config(page_title="نظام فرز المناطق المتقدم - 7 مناطق", layout="wide", page_icon="🏢")
 st.markdown("""
     <style>
     th, td { text-align: right !important; dir: rtl !important; }
     div.stButton > button { background-color: #2C3E50; color: white; width: 100%; font-weight: bold; border-radius: 8px; padding: 10px;}
     div.stButton > button:hover { background-color: #1A252F; color: #F1C40F;}
-    .report-box { background-color: #ECF0F1; padding: 15px; border-radius: 8px; border-right: 5px solid #2C3E50; text-align: right; margin-bottom: 10px;}
+    .report-box { background-color: #ECF0F1; padding: 12px; border-radius: 8px; border-right: 5px solid #2C3E50; text-align: right; margin-bottom: 10px;}
+    .stat-title { font-size: 13px; color: #7F8C8D; font-weight: bold; }
+    .stat-value { font-size: 18px; color: #2C3E50; font-weight: bold; margin-top: 3px;}
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: right;'>توزيع المناطق الذكي (تقديم الآباء وعزل النساء) 👨‍👦👩</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right;'>يقوم النظام بوضع الأب في بداية عائلته، ويعزل أسماء النساء (أرباب الأسر) ليضعهن في نهاية الملفات بشكل مستقل.</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: right;'>توزيع الفرز الذكي - نظام الـ 7 مناطق ⚡🏢</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right;'>تمت ترقية النظام ليدعم 7 مناطق توزيع مستقلة مع الحفاظ على ترتيب تقديم الآباء وعزل النساء في نهاية الجداول.</p>", unsafe_allow_html=True)
+
+# تعريف المناطق السبعة بشكل ثابت للرجوع إليها برمجياً
+LIST_OF_ZONES = [
+    "المنطقة الأولى", "المنطقة الثانية", "المنطقة الثالثة", 
+    "المنطقة الرابعة", "المنطقة الخامسة", "المنطقة السادسة", "المنطقة السابعة"
+]
 
 # -----------------------------------------------------------------------------
-# دوال الوورد والتعريب
+# دوال الوورد والتنسيق المستندي
 # -----------------------------------------------------------------------------
 def set_cell_direction(cell, direction='btLr'):
     tc = cell._tc
@@ -49,19 +57,17 @@ def apply_rtl(doc):
 
 def preprocess_name(name):
     name = re.sub(r'\s+', ' ', name.strip())
-    for prefix in ['عبد ', 'ابو ', 'أبو ', 'أم ', 'ام ', 'امة ', 'آل ']:
+    for prefix in ['عبد ', 'ابو ', 'أبو ', 'أم ', 'ام ', 'امة ', 'أمة ', 'آل ']:
         name = name.replace(prefix, prefix.strip() + '_')
     return name
 
 def is_female(name):
-    """دالة ذكية للتعرف على أسماء النساء"""
+    """دالة فحص وتحديد أسماء النساء لعزلهن في نهاية الملف"""
     first_word = name.strip().split()[0]
     if first_word in ['ام', 'أم', 'امة', 'أمة', 'آمال']: return True
     
-    # استثناءات للذكور تنتهي بتاء مربوطة
     male_exceptions = ['حمزة', 'اسامة', 'أسامة', 'حذيفة', 'قتادة', 'طلحة', 'خليفة', 'معاوية', 'عطية', 'حارثة', 'عروة', 'عبيدة', 'ميسرة', 'سلامة']
-    if first_word.endswith('ة') and first_word not in male_exceptions:
-        return True
+    if first_word.endswith('ة') and first_word not in male_exceptions: return True
         
     female_names = [
         'زينب', 'مريم', 'شهد', 'نور', 'هدى', 'ندى', 'ليلى', 'سها', 'مها', 'ريم', 'سعاد', 'هند',
@@ -82,7 +88,7 @@ def is_female(name):
     return False
 
 # -----------------------------------------------------------------------------
-# استخراج ومعالجة الجذور والأبناء
+# معالجة وهيكلة البيانات العائلية للجذور
 # -----------------------------------------------------------------------------
 def extract_and_group_data(file_obj):
     doc_in = Document(file_obj)
@@ -117,7 +123,6 @@ def extract_and_group_data(file_obj):
 
     if not records: return None, None
 
-    # فصل الرجال والنساء
     male_records = []
     female_records = []
     
@@ -131,13 +136,12 @@ def extract_and_group_data(file_obj):
             rec['father_string'] = " ".join(words[1:]) if len(words) > 1 else rec['processed_name']
             male_records.append(rec)
 
-    # 1. معالجة الرجال والآباء
     male_full_names = {r['processed_name']: r for r in male_records}
     unique_fathers = list(set(r['father_string'] for r in male_records))
     
     family_map = {}
     for f in unique_fathers:
-        if f in male_full_names: # إذا كان الأب موجود بالأسماء
+        if f in male_full_names:
             family_map[f] = f
         else:
             matches = [other for other in unique_fathers if other.startswith(f + " ") and other != f]
@@ -163,7 +167,6 @@ def extract_and_group_data(file_obj):
 
     families_list = []
     for root, members in final_family_groups.items():
-        # دالة الفرز الداخلية للرجال (تقديم الأب ثم ترتيب الأبناء)
         def sort_key(m):
             is_father = 0 if m['processed_name'] == root else 1
             return (is_father, m['name'])
@@ -178,7 +181,6 @@ def extract_and_group_data(file_obj):
             'is_female_group': False
         })
 
-    # 2. إضافة النساء כقيود مستقلة (لكي يتم عزلها لاحقاً)
     for rec in female_records:
         fam_id = 'female_' + str(id(rec))
         rec['root_id'] = fam_id
@@ -194,7 +196,7 @@ def extract_and_group_data(file_obj):
     return families_list, records
 
 # -----------------------------------------------------------------------------
-# محرك إنشاء ملف Word
+# محرك بناء ملفات Word وتصديرها التلقائي
 # -----------------------------------------------------------------------------
 def create_word_file(sorted_records):
     doc_out = Document()
@@ -234,7 +236,7 @@ def create_word_file(sorted_records):
     return buffer
 
 # -----------------------------------------------------------------------------
-# الواجهة التفاعلية
+# الواجهة التفاعلية وإدارة الـ 7 مناطق
 # -----------------------------------------------------------------------------
 st.markdown("<h3 style='text-align: right;'>📂 خطوة 1: رفع ملف البيانات الأصلي</h3>", unsafe_allow_html=True)
 uploaded_file = st.file_uploader("", type=['docx'], label_visibility="collapsed")
@@ -246,51 +248,47 @@ if uploaded_file:
             st.session_state.families = families
             st.session_state.all_records = all_records
             st.session_state.current_file = uploaded_file.name
-            st.session_state.family_zones = {fam['root_id']: 'المنطقة الأولى' for fam in families}
+            # تعيين المنطقة الأولى كخيار افتراضي لكافة العوائل
+            st.session_state.family_zones = {fam['root_id']: LIST_OF_ZONES[0] for fam in families}
             st.session_state.all_names_list = sorted([r['name'] for r in all_records])
 
     if 'families' in st.session_state:
         st.markdown("<br><hr>", unsafe_allow_html=True)
-        st.markdown("<h3 style='text-align: right;'>⚡ خطوة 2: لوحة السحب الذكي للإخوة</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: right;'>⚡ خطوة 2: لوحة الفرز والتعيين السريع للـ 7 مناطق</h3>", unsafe_allow_html=True)
         
         col_name, col_zone, col_action = st.columns([4, 3, 3])
         
         with col_name:
-            selected_person = st.selectbox("🔎 اختر أي اسم من العائلة أو اسم الأب:", options=st.session_state.all_names_list)
+            selected_person = st.selectbox("🔎 اختر أو اكتب اسم شخص أو أب للتخطي:", options=st.session_state.all_names_list)
             
         with col_zone:
-            chosen_zone = st.selectbox("🏢 اختر المنطقة المراد نقل إخوته إليها:", options=["المنطقة الأولى", "المنطقة الثانية", "المنطقة الثالثة"])
+            chosen_zone = st.selectbox("🏢 اختر واحدة من المناطق السبعة لتوجيه العائلة إليها:", options=LIST_OF_ZONES)
             
         with col_action:
             st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🚀 سحب وتعيين كل الإخوة"):
+            if st.button("🚀 سحب وتعيين كل الإخوة والآباء"):
                 matched_record = next((r for r in st.session_state.all_records if r['name'] == selected_person), None)
                 if matched_record:
                     target_root = matched_record['root_id']
-                    
                     st.session_state.family_zones[target_root] = chosen_zone
                     bros_count = len([r for r in st.session_state.all_records if r['root_id'] == target_root])
-                    
-                    st.success(f"✅ تم الاعتماد على الجذر .. وتم نقل **{bros_count}** أفراد (الأب والأبناء) إلى {chosen_zone}.")
+                    st.success(f"✅ تم سحب العائلة بالاعتماد على الاسم المرجعي.. ونقل **{bros_count}** أفراد بنجاح إلى ({chosen_zone}).")
 
         # ---------------------------------------------------------------------
-        # الإنتاج (حيث يتم عزل النساء في النهاية)
+        # توليد الملفات النهائية للـ 7 مناطق
         # ---------------------------------------------------------------------
         st.markdown("<br><hr>", unsafe_allow_html=True)
-        if st.button("⚙️ إنتاج وحفظ ملفات الوورد للمناطق الثلاثة"):
+        if st.button("⚙️ إنتاج وحفظ ملفات الوورد النهائية لكافة المناطق السبعة"):
             
-            zone_fams = {"المنطقة الأولى": [], "المنطقة الثانية": [], "المنطقة الثالثة": []}
+            zone_fams = {zone: [] for zone in LIST_OF_ZONES}
             for fam in st.session_state.families:
                 zone_fams[st.session_state.family_zones[fam['root_id']]].append(fam)
             
             def finalize_zone(families_in_zone):
-                # فصل الرجال والنساء لضمان وضع النساء في النهاية
                 males = [f for f in families_in_zone if not f['is_female_group']]
                 females = [f for f in families_in_zone if f['is_female_group']]
                 
-                # ترتيب الرجال: أبجدياً حسب اسم القائد وحجم العائلة
                 sorted_males = sorted(males, key=lambda x: (x['leading_name'][0] if x['leading_name'] else 'أ', -x['size'], x['leading_name']))
-                # ترتيب النساء: أبجدياً فقط في أسفل القائمة
                 sorted_females = sorted(females, key=lambda x: x['leading_name'])
 
                 final_list = []
@@ -298,21 +296,40 @@ if uploaded_file:
                 for f in sorted_females: final_list.extend(f['members'])
                 return final_list
 
-            z1 = finalize_zone(zone_fams["المنطقة الأولى"])
-            z2 = finalize_zone(zone_fams["المنطقة الثانية"])
-            z3 = finalize_zone(zone_fams["المنطقة الثالثة"])
+            # بناء مصفوفة البيانات النهائية لكل منطقة
+            final_buffers = {}
+            final_counts = {}
+            for zone in LIST_OF_ZONES:
+                zone_records = finalize_zone(zone_fams[zone])
+                final_counts[zone] = len(zone_records)
+                final_buffers[zone] = create_word_file(zone_records) if zone_records else None
+
+            st.markdown("<h3 style='text-align: right;'>📥 خطوة 3: تحميل ملفات المناطق المفروزة</h3>", unsafe_allow_html=True)
             
-            st.markdown("<h3 style='text-align: right;'>📥 خطوة 3: تحميل ملفات المناطق</h3>", unsafe_allow_html=True)
-            col1, col2, col3 = st.columns(3)
+            # عرض المناطق الأربعة الأولى في الصف الأول
+            st.markdown("<h4 style='text-align: right; color:#34495E;'>📍 الصف الأول (المناطق 1 - 4):</h4>", unsafe_allow_html=True)
+            r1_cols = st.columns(4)
+            for i in range(4):
+                zone_name = LIST_OF_ZONES[i]
+                with r1_cols[i]:
+                    st.markdown(f"<div class='report-box'><div class='stat-title'>{zone_name}</div><div class='stat-value'>{final_counts[zone_name]} فرد جاهز</div></div>", unsafe_allow_html=True)
+                    if final_buffers[zone_name]:
+                        st.download_button(f"📥 تحميل {zone_name}", data=final_buffers[zone_name], file_name=f"{zone_name.replace(' ', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+                    else: st.warning("المنطقة فارغة حالياً")
+
+            st.markdown("<br>", unsafe_allow_html=True)
             
-            with col1:
-                st.markdown(f"<div class='report-box'><div class='stat-title'>المنطقة 1</div><div class='stat-value'>{len(z1)} فرد</div></div>", unsafe_allow_html=True)
-                if z1: st.download_button("📥 تحميل المنطقة 1", data=create_word_file(z1), file_name="المنطقة_1.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+            # عرض المناطق الثلاثة المتبقية في الصف الثاني
+            st.markdown("<h4 style='text-align: right; color:#34495E;'>📍 الصف الثاني (المناطق 5 - 7):</h4>", unsafe_allow_html=True)
+            r2_cols = st.columns(3)
+            for i in range(3):
+                zone_name = LIST_OF_ZONES[4 + i]
+                with r2_cols[i]:
+                    st.markdown(f"<div class='report-box'><div class='stat-title'>{zone_name}</div><div class='stat-value'>{final_counts[zone_name]} فرد جاهز</div></div>", unsafe_allow_html=True)
+                    if final_buffers[zone_name]:
+                        st.download_button(f"📥 تحميل {zone_name}", data=final_buffers[zone_name], file_name=f"{zone_name.replace(' ', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+                    else: st.warning("المنطقة فارغة حالياً")
                     
-            with col2:
-                st.markdown(f"<div class='report-box'><div class='stat-title'>المنطقة 2</div><div class='stat-value'>{len(z2)} فرد</div></div>", unsafe_allow_html=True)
-                if z2: st.download_button("📥 تحميل المنطقة 2", data=create_word_file(z2), file_name="المنطقة_2.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-                    
-            with col3:
-                st.markdown(f"<div class='report-box'><div class='stat-title'>المنطقة 3</div><div class='stat-value'>{len(z3)} فرد</div></div>", unsafe_allow_html=True)
-                if z3: st.download_button("📥 تحميل المنطقة 3", data=create_word_file(z3), file_name="المنطقة_3.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+            st.success("🎉 اكتمل الفرز والحفظ لـ 7 مناطق بنجاح تام! الملفات جاهزة للتحميل والمطابقة الميدانية.")
+else:
+    st.info("👋 يرجى رفع ملف الوورد أولاً لتفعيل لوحة التحكم والتوزيع السريع للـ 7 مناطق.")
